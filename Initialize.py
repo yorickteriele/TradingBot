@@ -3,9 +3,10 @@ from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
 import json
+from risk_management import RiskManager, RiskParameters
 
 class Account:
-    def __init__(self):
+    def __init__(self, risk_params=None):
         with open('secrets.json') as f:
             secrets = json.load(f)
             self.API_KEY = secrets['API_KEY']
@@ -13,6 +14,7 @@ class Account:
         
         self.trading_client = TradingClient(self.API_KEY, self.API_SECRET)
         self.data_client = StockHistoricalDataClient(self.API_KEY, self.API_SECRET)
+        self.risk_manager = RiskManager(self.trading_client, risk_params)
 
     def get_portfolio(self):
         return {position.symbol: float(position.qty) for position in self.trading_client.get_all_positions()}
@@ -23,30 +25,7 @@ class Account:
 
     def trade_stock(self, symbol, sentiment):
         try:
-            portfolio = self.get_portfolio()
-            buying_power = self.get_buying_power()
-            ten_percent_buying_power = round(buying_power * 0.3, 2)
-
-            if "Positive" in sentiment:
-                order = MarketOrderRequest(
-                    symbol=symbol,
-                    notional=ten_percent_buying_power,
-                    side=OrderSide.BUY,
-                    time_in_force=TimeInForce.DAY
-                )
-                self.trading_client.submit_order(order)
-                print(f"Bought 10% of buying power (${ten_percent_buying_power:.2f}) of {symbol}")
-
-            elif "Negative" in sentiment and symbol in portfolio:
-                order = MarketOrderRequest(
-                    symbol=symbol,
-                    qty=portfolio[symbol],
-                    side=OrderSide.SELL,
-                    time_in_force=TimeInForce.DAY
-                )
-                self.trading_client.submit_order(order)
-                print(f"Sold all shares of {symbol}")
-
+            self.risk_manager.execute_trade_with_risk_management(symbol, sentiment)
         except Exception as e:
             print(f"Error: {e}")
 
