@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pdb
+*.egg
+*.egg-info/
+dist/
+build/
+*.log
+*.sqlite3
+*.db
+*.env
+.env*
+.venv/
+venv/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+
+# Chrome driver
+Database/chromedriver.exe
+
+# Test output
+*.coverage
+htmlcov/
+
+# Others
+*.bak
+*.swp
+*.swo
+
+# Ignore secrets
+secrets.json
