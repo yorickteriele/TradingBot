@@ -35,11 +35,6 @@ ENV/
 *.swp
 *.swo
 
-# Docker
-Dockerfile*
-docker-compose*
-.dockerignore
-
 # Local development
 .env
 .env.*
