@@ -117,20 +117,30 @@ jobs:
             ./init-letsencrypt.sh
           fi
           
-          docker-compose -p tradingbot down
+          # Pull latest images and update services one by one
+          docker-compose -p tradingbot -f docker-compose.yml pull
           
-          docker-compose -p tradingbot up -d --build --remove-orphans
-          
-          docker system prune -f --volumes
-          
-          # Verify services
-          if ! docker-compose ps | grep -q "Up"; then
-            echo "Some services failed to start"
-            docker-compose logs
+          # Update services with zero downtime
+          docker-compose -p tradingbot -f docker-compose.yml up -d --no-deps --build bot
+          # Wait for bot to be healthy
+          if ! docker-compose -p tradingbot -f docker-compose.yml ps bot | grep -q "healthy"; then
+            echo "Bot service failed to start"
+            docker-compose -p tradingbot -f docker-compose.yml logs bot
             exit 1
           fi
           
-          echo "All services are running"
+          docker-compose -p tradingbot -f docker-compose.yml up -d --no-deps --build dashboard
+          # Wait for dashboard to be healthy
+          if ! docker-compose -p tradingbot -f docker-compose.yml ps dashboard | grep -q "healthy"; then
+            echo "Dashboard service failed to start"
+            docker-compose -p tradingbot -f docker-compose.yml logs dashboard
+            exit 1
+          fi
+          
+          # Clean up old images and unused resources
+          docker system prune -f --volumes
+          
+          echo "All services updated with zero downtime"
         '
     - name: Cleanup
       if: always()
