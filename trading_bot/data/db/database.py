@@ -1,14 +1,21 @@
-﻿import re
+import re
+import json
+import os
+import psycopg2
+from pathlib import Path
 
+# Load configuration from secrets.json
+secrets_path = Path(__file__).parent.parent.parent.parent / 'secrets.json'
+with open(secrets_path) as f:
+    config = json.load(f)
+
+# Initialize Alpaca client
 import Initialize
-import chrome  
-
 account = Initialize.Account()
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import GetAssetsRequest
 from alpaca.trading.enums import AssetClass
-import mysql.connector
 
 trading_client = account.trading_client
 
@@ -19,11 +26,12 @@ nasdaq_assets = [asset for asset in assets if asset.exchange == "NASDAQ"]
 print(nasdaq_assets)
 nasdaq_assets = sorted(nasdaq_assets, key=lambda x: x.fractionable, reverse=True)[:300]
 
-mydb = mysql.connector.connect(
-    host="localhost",
-    user="phpadmin",
-    password="phpadmin",
-    database="TradingBot"
+# Database connection using PostgreSQL
+conn = psycopg2.connect(
+    host=config.get("DB_HOST", "localhost"),
+    user=config.get("DB_USER", "postgres"),
+    password=config.get("DB_PASSWORD", "postgres"),
+    dbname=config.get("DB_NAME", "tradingbot")
 )
 
 terms_to_remove = [
@@ -46,23 +54,26 @@ def clean_company_name(company_name):
 
     return company_name.strip()
 
-cursor = mydb.cursor()
+# Create a cursor
+cursor = conn.cursor()
 
+# Create table with PostgreSQL syntax
 create_table_query = """
-CREATE TABLE IF NOT EXISTS `nasdaq_stock` (
-    `StockID` INT NOT NULL AUTO_INCREMENT,
-    `Symbol` VARCHAR(10) NOT NULL,
-    `CompanyName` VARCHAR(255) NOT NULL,
-    `Exchange` VARCHAR(50) NOT NULL,
-    `RSS_URL` VARCHAR(255) NOT NULL,
-    PRIMARY KEY (`StockID`)
-) ENGINE = InnoDB;
+CREATE TABLE IF NOT EXISTS nasdaq_stock (
+    stock_id SERIAL PRIMARY KEY,
+    symbol VARCHAR(10) NOT NULL,
+    company_name VARCHAR(255) NOT NULL,
+    exchange VARCHAR(50) NOT NULL,
+    rss_url VARCHAR(255) NOT NULL
+);
 """
 cursor.execute(create_table_query)
 print("Table created or already exists.")
 
-cursor.execute("DELETE FROM nasdaq_stock")
-mydb.commit()
+# Clear existing data
+truncate_query = "TRUNCATE TABLE nasdaq_stock;"
+cursor.execute(truncate_query)
+conn.commit()
 print("All existing entries removed.")
 
 for asset in nasdaq_assets:

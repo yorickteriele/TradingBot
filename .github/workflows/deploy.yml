@@ -1,0 +1,159 @@
+name: Deploy Trading Bot
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+env:
+  DOCKER_BUILDKIT: 1
+  COMPOSE_DOCKER_CLI_BUILD: 1
+
+jobs:
+  build:
+    name: Build and Prepare
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Run tests
+      run: |
+        python -m pytest
+        
+    - name: Create deployment package
+      run: |
+        mkdir -p deploy
+        # Copy only necessary files
+        cp -r trading_bot dashboard nginx docker-compose.yml *.sh deploy/
+        # Create archive
+        tar -czf tradingbot-deploy.tar.gz -C deploy .
+        
+    - name: Upload deployment package
+      uses: actions/upload-artifact@v4
+      with:
+        name: tradingbot-package
+        path: tradingbot-deploy.tar.gz
+        retention-days: 1
+        
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build]
+    environment: production
+    
+    steps:
+    - name: Download deployment package
+      uses: actions/download-artifact@v4
+      with:
+        name: tradingbot-package
+        
+    - name: Setup SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+        
+    - name: Deploy to server
+      run: |
+        # Copy to server
+        scp tradingbot-deploy.tar.gz ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }}:/tmp/
+        
+        # Run deployment script on server
+        ssh ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} '
+          set -e
+          
+          # Create app directory
+          mkdir -p /opt/tradingbot
+          cd /opt/tradingbot
+          
+          # Extract new version
+          tar -xzf /tmp/tradingbot-deploy.tar.gz
+          rm /tmp/tradingbot-deploy.tar.gz
+          
+          # Set environment variables
+          echo "DB_HOST=${{ secrets.DB_HOST }}" > .env
+          echo "DB_USER=${{ secrets.DB_USER }}" >> .env
+          echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+          echo "DB_NAME=${{ secrets.DB_NAME }}" >> .env
+          echo "ALPACA_API_KEY=${{ secrets.ALPACA_API_KEY }}" >> .env
+          echo "ALPACA_SECRET_KEY=${{ secrets.ALPACA_SECRET_KEY }}" >> .env
+          
+          # Initialize or renew certificates if needed
+          if [ ! -f "data/certbot/conf/live/trading.yorickteriele.nl/fullchain.pem" ]; then
+            chmod +x init-letsencrypt.sh
+            ./init-letsencrypt.sh
+          else
+            ./renew-certs.sh
+          fi
+          
+          # Start services
+          docker-compose down
+          docker-compose up -d --build
+          
+          # Clean up old images
+          docker system prune -f
+        '
+    - name: Verify deployment
+      run: |
+        # Check if services are running
+        ssh ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} '
+          if ! docker ps | grep -q tradingbot; then
+            echo "❌ Some services are not running"
+            docker ps -a
+            exit 1
+          fi
+          echo "All services are running"
+        '
+    - name: Cleanup
+      if: always()
+      run: |
+        rm -f ~/.ssh/id_rsa
+        python -m trading_bot.data.db.database
+        
+    - name: Start services
+      run: |
+        # Start the trading bot in the background
+        nohup python -m trading_bot.main > bot.log 2>&1 &
+        
+        # Start the dashboard
+        nohup streamlit run dashboard/app.py --server.port=8501 --server.address=0.0.0.0 > dashboard.log 2>&1 &
+        
+    - name: Configure firewall
+      run: |
+        sudo ufw allow 22
+        sudo ufw allow 8501
+        sudo ufw --force enable
+        
+    - name: Set up Nginx
+      run: |
+        sudo apt-get install -y nginx
+        sudo rm /etc/nginx/sites-enabled/default
+        echo 'server {
+          listen 80;
+          server_name _;
+          
+          location / {
+            proxy_pass http://localhost:8501;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host $host;
+            proxy_cache_bypass $http_upgrade;
+          }
+        }' | sudo tee /etc/nginx/sites-available/tradingbot
+        sudo ln -s /etc/nginx/sites-available/tradingbot /etc/nginx/sites-enabled/
+        sudo nginx -t
+        sudo systemctl restart nginx

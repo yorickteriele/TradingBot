@@ -1,0 +1,1 @@
+# trading_bot.data.db module initialization
