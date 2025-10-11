@@ -71,10 +71,13 @@ jobs:
       with:
         name: tradingbot-package
         
+    - name: List downloaded files
+      run: ls -la
+      
     - name: Copy and extract deployment package
       run: |
         # First, copy the artifact to the server
-        scp -o StrictHostKeyChecking=no tradingbot-package/tradingbot-deploy.tar.gz root@${{ secrets.SSH_HOST }}:/tmp/
+        scp -o StrictHostKeyChecking=no tradingbot-deploy.tar.gz root@${{ secrets.SSH_HOST }}:/tmp/
         
         # Then set up the environment and extract
         ssh -o StrictHostKeyChecking=no root@${{ secrets.SSH_HOST }} '
@@ -84,8 +87,12 @@ jobs:
           mkdir -p /opt/tradingbot
           cd /opt/tradingbot
           
+          # Clean up any existing files
+          rm -rf *
+          
           # Extract deployment package
           echo "Extracting deployment package..."
+          ls -la /tmp/tradingbot-deploy.tar.gz
           tar -xzf /tmp/tradingbot-deploy.tar.gz -C /opt/tradingbot --strip-components=1
           rm -f /tmp/tradingbot-deploy.tar.gz
           
