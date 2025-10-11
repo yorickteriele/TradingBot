@@ -11,7 +11,7 @@ cat > data/certbot/conf/cli.ini <<EOL
 rsa-key-size = 4096
 
 # Register with the specified email address
-email = your-email@example.com
+email = yorick.teriele@outlook.com
 
 # Use the webroot authenticator
 authenticator = webroot
