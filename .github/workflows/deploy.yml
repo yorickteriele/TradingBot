@@ -115,17 +115,12 @@ jobs:
           if [ ! -f "data/certbot/conf/live/trading.yorickteriele.nl/fullchain.pem" ]; then
             chmod +x init-letsencrypt.sh
             ./init-letsencrypt.sh
-          else
-            ./renew-certs.sh
           fi
           
-          # Stop and remove existing containers
-          docker-compose down
+          docker-compose -p tradingbot down
           
-          # Pull latest images and build/start services
-          docker-compose up -d --build --remove-orphans
+          docker-compose -p tradingbot up -d --build --remove-orphans
           
-          # Clean up unused resources
           docker system prune -f --volumes
           
           # Verify services
