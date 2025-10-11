@@ -71,8 +71,12 @@ jobs:
       with:
         name: tradingbot-package
         
-    - name: Create deployment directory and set up environment
+    - name: Copy and extract deployment package
       run: |
+        # First, copy the artifact to the server
+        scp -o StrictHostKeyChecking=no tradingbot-package/tradingbot-deploy.tar.gz root@${{ secrets.SSH_HOST }}:/tmp/
+        
+        # Then set up the environment and extract
         ssh -o StrictHostKeyChecking=no root@${{ secrets.SSH_HOST }} '
           set -e
           
@@ -81,10 +85,12 @@ jobs:
           cd /opt/tradingbot
           
           # Extract deployment package
-          tar -xzf /tmp/tradingbot-deploy.tar.gz
-          rm /tmp/tradingbot-deploy.tar.gz
+          echo "Extracting deployment package..."
+          tar -xzf /tmp/tradingbot-deploy.tar.gz -C /opt/tradingbot --strip-components=1
+          rm -f /tmp/tradingbot-deploy.tar.gz
           
           # Set up environment variables
+          echo "Setting up environment variables..."
           echo "DB_HOST=${{ secrets.DB_HOST }}" > .env
           echo "DB_USER=${{ secrets.DB_USER }}" >> .env
           echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
