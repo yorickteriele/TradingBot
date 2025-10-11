@@ -35,8 +35,8 @@ jobs:
     - name: Create deployment package
       run: |
         mkdir -p deploy
-        # Copy only necessary files
-        cp -r trading_bot dashboard nginx docker-compose.yml Dockerfile.* *.sh deploy/
+        # Copy all files except those in .dockerignore
+        rsync -av --exclude-from=.dockerignore . deploy/
         # Create archive
         tar -czf tradingbot-deploy.tar.gz -C deploy .
         
