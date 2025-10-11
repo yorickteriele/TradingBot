@@ -36,7 +36,7 @@ jobs:
       run: |
         mkdir -p deploy
         # Copy only necessary files
-        cp -r trading_bot dashboard nginx docker-compose.yml *.sh deploy/
+        cp -r trading_bot dashboard nginx docker-compose.yml Dockerfile.* *.sh deploy/
         # Create archive
         tar -czf tradingbot-deploy.tar.gz -C deploy .
         
