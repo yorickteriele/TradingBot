@@ -8,11 +8,6 @@ services:
       dockerfile: Dockerfile.bot
     container_name: tradingbot-bot
     environment:
-      - DB_HOST=${DB_HOST:-host.docker.internal}
-      - DB_USER=${DB_USER:-postgres}
-      - DB_PASSWORD=${DB_PASSWORD:-postgres}
-      - DB_NAME=${DB_NAME:-tradingbot}
-      - DB_PORT=${DB_PORT:-5432}
       - DB_HOST=db
       - DB_USER=${DB_USER:-postgres}
       - DB_PASSWORD=${DB_PASSWORD:-postgres}
