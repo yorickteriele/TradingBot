@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime
-from performance import PerformanceTracker, Trade
+from trading_bot.core.performance_tracker import PerformanceTracker, Trade
 
 @pytest.fixture
 def tracker():

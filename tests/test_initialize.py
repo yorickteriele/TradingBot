@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import Mock, patch
-from Initialize import Account
+from trading_bot.core.initializer import Account
 
 @pytest.fixture
 def mock_trading_client():

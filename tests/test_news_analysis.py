@@ -1,7 +1,7 @@
 import pytest
 from datetime import datetime
 from unittest.mock import Mock, patch
-from news_analysis import NewsAnalyzer, NewsArticle, NewsSource
+from trading_bot.core.news_analyzer import NewsAnalyzer, NewsArticle, NewsSource
 
 @pytest.fixture
 def news_analyzer():

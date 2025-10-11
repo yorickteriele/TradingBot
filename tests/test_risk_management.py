@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import Mock, patch
 import numpy as np
 from datetime import datetime, timedelta
-from risk_management import RiskManager, RiskParameters
+from trading_bot.core.risk_manager import RiskManager, RiskParameters
 from alpaca.trading.enums import OrderSide
 
 @pytest.fixture
