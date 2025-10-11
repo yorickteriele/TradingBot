@@ -119,61 +119,25 @@ jobs:
             ./renew-certs.sh
           fi
           
-          # Start services
+          # Stop and remove existing containers
           docker-compose down
-          docker-compose up -d --build
           
-          # Clean up old images
+          # Pull latest images and build/start services
+          docker-compose up -d --build --remove-orphans
+          
+          # Clean up unused resources
           docker system prune -f --volumes
-        '
-    - name: Verify deployment
-      run: |
-        # Check if services are running
-        ssh -o StrictHostKeyChecking=no root@${{ secrets.SSH_HOST }} '
-          if ! docker ps | grep -q tradingbot; then
-            echo "Some services are not running"
-            docker ps -a
+          
+          # Verify services
+          if ! docker-compose ps | grep -q "Up"; then
+            echo "Some services failed to start"
+            docker-compose logs
             exit 1
           fi
+          
           echo "All services are running"
         '
     - name: Cleanup
       if: always()
       run: |
         rm -f ~/.ssh/id_rsa
-        python -m trading_bot.data.db.database
-        
-    - name: Start services
-      run: |
-        # Start the trading bot in the background
-        nohup python -m trading_bot.main > bot.log 2>&1 &
-        
-        # Start the dashboard
-        nohup streamlit run dashboard/app.py --server.port=8501 --server.address=0.0.0.0 > dashboard.log 2>&1 &
-        
-    - name: Configure firewall
-      run: |
-        sudo ufw allow 22
-        sudo ufw allow 8501
-        sudo ufw --force enable
-        
-    - name: Set up Nginx
-      run: |
-        sudo apt-get install -y nginx
-        sudo rm /etc/nginx/sites-enabled/default
-        echo 'server {
-          listen 80;
-          server_name _;
-          
-          location / {
-            proxy_pass http://localhost:8501;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection "upgrade";
-            proxy_set_header Host $host;
-            proxy_cache_bypass $http_upgrade;
-          }
-        }' | sudo tee /etc/nginx/sites-available/tradingbot
-        sudo ln -s /etc/nginx/sites-available/tradingbot /etc/nginx/sites-enabled/
-        sudo nginx -t
-        sudo systemctl restart nginx
