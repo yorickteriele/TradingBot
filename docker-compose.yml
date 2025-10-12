@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # Trading Bot
   bot:
-    image: ${BOT_IMAGE:-ghcr.io/yorickteriele/tradingbot-bot:latest}
+    image: ${BOT_IMAGE:-ghcr.io/yorickteriele/tradingbot-bot:develop}
     container_name: tradingbot-bot
     environment:
       - DB_HOST=db
@@ -52,7 +52,7 @@ services:
 
   # Dashboard
   dashboard:
-    image: ${DASHBOARD_IMAGE:-ghcr.io/yorickteriele/tradingbot-dashboard:latest}
+    image: ${DASHBOARD_IMAGE:-ghcr.io/yorickteriele/tradingbot-dashboard:develop}
     container_name: tradingbot-dashboard
     ports:
       - "8501:8501"
