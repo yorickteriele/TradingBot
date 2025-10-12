@@ -1,39 +1,54 @@
+# syntax=docker/dockerfile:1.4
+
 # Build stage for Python dependencies
 FROM python:3.10-slim as builder
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies needed for building Python packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only requirements first to leverage Docker cache
 COPY requirements.txt .
-RUN pip install --user -r requirements.txt
+
+# Install Python dependencies with cache mount for faster rebuilds
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --user --no-warn-script-location -r requirements.txt
 
 # Final stage
 FROM python:3.10-slim
 WORKDIR /app
 
-# Copy installed Python packages and application code
+# Install runtime dependencies for healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed Python packages from builder stage
 COPY --from=builder /root/.local /root/.local
-COPY . .
 
 # Ensure scripts in .local are usable
 ENV PATH=/root/.local/bin:$PATH \
     PYTHONPATH=/app \
     PYTHONUNBUFFERED=1
 
-# Create a non-root user and switch to it
-RUN useradd -m dashboard && chown -R dashboard:dashboard /app
+# Create a non-root user
+RUN useradd -m -u 1000 dashboard
+
+# Copy application code
+COPY --chown=dashboard:dashboard . .
+
+# Switch to non-root user
 USER dashboard
 
 # Expose the port the app runs on
 EXPOSE 8501
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD python -c "import psycopg2; psycopg2.connect(host='db', dbname='${DB_NAME:-tradingbot}', user='${DB_USER:-postgres}', password='${DB_PASSWORD}');" || exit 1
+# Health check - check Streamlit health endpoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8501/_stcore/health || exit 1
 
 # Command to run the application
 CMD ["streamlit", "run", "dashboard/app.py", "--server.port=8501", "--server.address=0.0.0.0"]

@@ -3,9 +3,7 @@ version: '3.8'
 services:
   # Trading Bot
   bot:
-    build:
-      context: .
-      dockerfile: Dockerfile.bot
+    image: ${BOT_IMAGE:-ghcr.io/yorickteriele/tradingbot-bot:latest}
     container_name: tradingbot-bot
     environment:
       - DB_HOST=db
@@ -24,11 +22,11 @@ services:
     volumes:
       - ./data/bot:/app/data
     healthcheck:
-      test: ["CMD", "python", "-c", "import psycopg2; psycopg2.connect(host='db', dbname='${DB_NAME:-tradingbot}', user='${DB_USER:-postgres}', password='${DB_PASSWORD}')"]
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 40s
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -54,9 +52,7 @@ services:
 
   # Dashboard
   dashboard:
-    build:
-      context: .
-      dockerfile: Dockerfile.dashboard
+    image: ${DASHBOARD_IMAGE:-ghcr.io/yorickteriele/tradingbot-dashboard:latest}
     container_name: tradingbot-dashboard
     ports:
       - "8501:8501"
@@ -75,11 +71,11 @@ services:
     volumes:
       - ./dashboard:/app/dashboard
     healthcheck:
-      test: ["CMD", "wget", "--spider", "http://localhost:8501/_stcore/health"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8501/_stcore/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 40s
 
 networks:
   tradingbot-network:

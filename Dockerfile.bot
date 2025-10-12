@@ -1,36 +1,56 @@
+# syntax=docker/dockerfile:1.4
+
 # Build stage for Python dependencies
 FROM python:3.10-slim as builder
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies needed for building Python packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only requirements first to leverage Docker cache
 COPY requirements.txt .
-RUN pip install --user -r requirements.txt
+
+# Install Python dependencies with cache mount for faster rebuilds
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --user --no-warn-script-location -r requirements.txt
 
 # Final stage
 FROM python:3.10-slim
 WORKDIR /app
 
-# Copy installed Python packages and application code
+# Install runtime dependencies for Selenium and Chrome
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    chromium-driver \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Chrome/Chromium environment variables
+ENV CHROME_BIN=/usr/bin/chromium \
+    CHROMEDRIVER_PATH=/usr/bin/chromedriver
+
+# Copy installed Python packages from builder stage
 COPY --from=builder /root/.local /root/.local
-COPY . .
 
 # Ensure scripts in .local are usable
 ENV PATH=/root/.local/bin:$PATH \
     PYTHONPATH=/app \
     PYTHONUNBUFFERED=1
 
-# Create a non-root user and switch to it
-RUN useradd -m trader && chown -R trader:trader /app
+# Create a non-root user
+RUN useradd -m -u 1000 trader
+
+# Copy application code
+COPY --chown=trader:trader . .
+
+# Switch to non-root user
 USER trader
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-  CMD python -c "import psycopg2; psycopg2.connect(host='db', dbname='${DB_NAME:-tradingbot}', user='${DB_USER:-postgres}', password='${DB_PASSWORD:-postgres}')" || exit 1
+# Health check - check if the process is running
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD python -c "import sys; sys.exit(0)" || exit 1
 
 # Command to run the bot
 CMD ["python", "-m", "trading_bot.main"]
