@@ -42,5 +42,7 @@ htmlcov/
 *.swp
 *.swo
 
-# Ignore secrets
-secrets.json
+
+.idea/
+
+screenshots/

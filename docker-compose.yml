@@ -55,7 +55,7 @@ services:
     image: ${DASHBOARD_IMAGE:-ghcr.io/yorickteriele/tradingbot-dashboard:develop}
     container_name: tradingbot-dashboard
     ports:
-      - "8501:8501"
+      - "3002:8501"
     environment:
       - DB_HOST=db
       - DB_USER=${DB_USER:-postgres}

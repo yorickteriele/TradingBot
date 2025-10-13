@@ -19,6 +19,15 @@ jobs:
       packages: write
     
     steps:
+    - name: Free up disk space
+      run: |
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /opt/ghc
+        sudo rm -rf "/usr/local/share/boost"
+        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+        sudo docker system prune -af
+        df -h
+      
     - name: Checkout code
       uses: actions/checkout@v4
       
@@ -57,6 +66,11 @@ jobs:
         cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ steps.image-name.outputs.IMAGE_NAME }}-bot:buildcache
         cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ steps.image-name.outputs.IMAGE_NAME }}-bot:buildcache,mode=max
         
+    - name: Clean up after bot build
+      run: |
+        docker system prune -af
+        df -h
+        
     - name: Extract metadata for dashboard
       id: meta-dashboard
       uses: docker/metadata-action@v5
@@ -77,6 +91,11 @@ jobs:
         labels: ${{ steps.meta-dashboard.outputs.labels }}
         cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ steps.image-name.outputs.IMAGE_NAME }}-dashboard:buildcache
         cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ steps.image-name.outputs.IMAGE_NAME }}-dashboard:buildcache,mode=max
+        
+    - name: Clean up after dashboard build
+      run: |
+        docker system prune -af
+        df -h
         
   deploy:
     name: Deploy to Production
