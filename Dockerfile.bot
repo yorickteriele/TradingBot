@@ -1,26 +1,37 @@
 # syntax=docker/dockerfile:1.4
+
+# Build stage for Python dependencies
 FROM python:3.10-slim as builder
 WORKDIR /app
 
-# Install build dependencies only
-RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ && rm -rf /var/lib/apt/lists/*
+# Alleen build tools als nodig, anders weg
+RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN --mount=type=cache,target=/root/.cache/pip pip install --prefix=/app/.local -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --prefix=/app/.local -r requirements.txt
 
+# Final stage
 FROM python:3.10-slim
 WORKDIR /app
 
-# Runtime dependencies only
-RUN apt-get update && apt-get install -y --no-install-recommends chromium chromium-driver && rm -rf /var/lib/apt/lists/*
+# Alleen runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends wget \
+    && rm -rf /var/lib/apt/lists/*
 
+# Copy Python packages van builder
 COPY --from=builder /app/.local /app/.local
-ENV PATH=/app/.local/bin:$PATH
-ENV CHROME_BIN=/usr/bin/chromium CHROMEDRIVER_PATH=/usr/bin/chromedriver PYTHONUNBUFFERED=1
+ENV PATH=/app/.local/bin:$PATH PYTHONPATH=/app PYTHONUNBUFFERED=1
 
 # Non-root user
-RUN useradd -m -u 1000 trader
-COPY --chown=trader:trader . .
-USER trader
+RUN useradd -m -u 1000 dashboard
+COPY --chown=dashboard:dashboard . .
+USER dashboard
 
-CMD ["python", "-m", "trading_bot.main"]
+EXPOSE 8501
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8501/_stcore/health || exit 1
+
+CMD ["streamlit", "run", "dashboard/app.py", "--server.port=8501", "--server.address=0.0.0.0"]
