@@ -1,22 +1,29 @@
-﻿from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
+from alpaca.data.requests import StockLatestQuoteRequest
+from trading_bot.core.risk_manager import RiskManager
 import json
-from risk_management import RiskManager, RiskParameters
-from performance import PerformanceTracker
+import os
+
 
 class Account:
-    def __init__(self, risk_params=None):
-        with open('secrets.json') as f:
-            secrets = json.load(f)
-            self.API_KEY = secrets['API_KEY']
-            self.API_SECRET = secrets['API_SECRET']
+    def __init__(self, performance_tracker=None):
+        self.API_KEY = os.getenv('ALPACA_API_KEY')
+        self.API_SECRET = os.getenv('ALPACA_SECRET_KEY')
         
         self.trading_client = TradingClient(self.API_KEY, self.API_SECRET)
         self.data_client = StockHistoricalDataClient(self.API_KEY, self.API_SECRET)
-        self.risk_manager = RiskManager(self.trading_client, risk_params)
-        self.performance_tracker = PerformanceTracker()
+        self.risk_manager = RiskManager(self.trading_client, self.data_client)
+        self.performance_tracker = performance_tracker
+
+
+    def get_data_client(self):
+        return self.data_client
+
+    def get_trading_client(self):
+        return self.trading_client
 
     def get_portfolio(self):
         return {position.symbol: float(position.qty) for position in self.trading_client.get_all_positions()}
@@ -29,25 +36,48 @@ class Account:
         try:
             current_price = self.get_stock_price(symbol)
             if not current_price:
+                print(f"Could not get price for {symbol}")
                 return
 
             portfolio = self.get_portfolio()
-            if "Positive" in sentiment:
-                if symbol not in portfolio:
-                    size = self.risk_manager.calculate_position_size(symbol, self.get_buying_power(), 0.2)
-                    stop_loss = self.risk_manager.calculate_stop_loss(symbol, OrderSide.BUY, current_price, 0.2)
-                    self.performance_tracker.record_entry(symbol, current_price, size, sentiment, stop_loss)
+            
+            # Use risk manager if available, otherwise simple trading logic
+            if self.risk_manager:
+                if "Positive" in sentiment and symbol not in portfolio:
+                    volatility = self.risk_manager._get_volatility(symbol)
+                    size = self.risk_manager.calculate_position_size(symbol, self.get_buying_power(), volatility)
+                    stop_loss = self.risk_manager.calculate_stop_loss(symbol, OrderSide.BUY, current_price, volatility)
+                    
+                    if self.performance_tracker:
+                        self.performance_tracker.record_entry(symbol, current_price, size, sentiment, stop_loss)
+                    
                     self.risk_manager.execute_trade_with_risk_management(symbol, sentiment)
+                    print(f"BUY {symbol} at ${current_price:.2f} - Size: {size:.2f}")
 
-            elif "Negative" in sentiment and symbol in portfolio:
-                self.risk_manager.execute_trade_with_risk_management(symbol, sentiment)
-                self.performance_tracker.record_exit(symbol, current_price)
+                elif "Negative" in sentiment and symbol in portfolio:
+                    self.risk_manager.execute_trade_with_risk_management(symbol, sentiment)
+                    
+                    if self.performance_tracker:
+                        self.performance_tracker.record_exit(symbol, current_price)
+                    
+                    print(f"SELL {symbol} at ${current_price:.2f}")
+            else:
+                # Simple trading without risk management
+                if "Positive" in sentiment and symbol not in portfolio:
+                    print(f"Would BUY {symbol} at ${current_price:.2f} (risk manager not configured)")
+                elif "Negative" in sentiment and symbol in portfolio:
+                    print(f"Would SELL {symbol} at ${current_price:.2f} (risk manager not configured)")
 
         except Exception as e:
-            print(f"Error: {e}")
+            print(f"Error trading {symbol}: {e}")
 
     def get_stock_price(self, symbol):
-        bars = self.data_client.get_stock_bars(symbol, timeframe="1Min", limit=1)
-        if bars:
-            return bars[0].close
-        return None
+        try:
+            request = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+            quotes = self.data_client.get_stock_latest_quote(request)
+            if symbol in quotes:
+                return float(quotes[symbol].ask_price)
+            return None
+        except Exception as e:
+            print(f"Error getting price for {symbol}: {e}")
+            return None
