@@ -1,12 +1,11 @@
 aiohttp
-alpaca
-dotenv
+alpaca-trade-api
 feedparser
-newspaper
+newspaper3k
 numpy
 pandas
 plotly
 psycopg2
 streamlit
-subprocess
 transformers
+python-dotenv
