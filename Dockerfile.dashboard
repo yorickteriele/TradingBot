@@ -1,4 +1,6 @@
 # syntax=docker/dockerfile:1.4
+
+# Build stage for Python dependencies
 FROM python:3.10-slim as builder
 WORKDIR /app
 
@@ -6,18 +8,22 @@ WORKDIR /app
 # RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN --mount=type=cache,target=/root/.cache/pip pip install --prefix=/app/.local -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir -r requirements.txt
 
+# Final stage
 FROM python:3.10-slim
 WORKDIR /app
 
-# Runtime deps only
-RUN apt-get update && apt-get install -y --no-install-recommends wget && rm -rf /var/lib/apt/lists/*
+# Runtime dependencies only
+RUN apt-get update && apt-get install -y --no-install-recommends wget \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy Python packages from builder
-COPY --from=builder /app/.local /app/.local
-ENV PATH=/app/.local/bin:$PATH PYTHONPATH=/app PYTHONUNBUFFERED=1
+# Copy Python packages and binaries from builder
+COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
+# Non-root user
 RUN useradd -m -u 1000 dashboard
 COPY --chown=dashboard:dashboard . .
 USER dashboard
@@ -25,6 +31,6 @@ USER dashboard
 EXPOSE 8501
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8501/_stcore/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8501/_stcore/health || exit 1
 
 CMD ["streamlit", "run", "dashboard/app.py", "--server.port=8501", "--server.address=0.0.0.0"]
