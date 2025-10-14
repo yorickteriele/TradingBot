@@ -10,4 +10,3 @@ psycopg2-binary
 streamlit
 transformers
 python-dotenv
-
