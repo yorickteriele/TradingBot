@@ -23,7 +23,7 @@ RUN useradd -m -u 1000 dashboard
 
 # Copy the single dashboard.py file
 # Copy the whole trading_bot folder
-COPY --chown=dashboard:dashboard trading_bot/ ./trading_bot/
+COPY --chown=dashboard:dashboard . .
 ENV PYTHONPATH=/app
 
 
