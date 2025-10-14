@@ -2,7 +2,8 @@ aiohttp
 alpaca-py
 feedparser
 newspaper3k
-lxml[html_clean]
+lxml
+lxml_html_clean
 numpy
 pandas
 plotly
