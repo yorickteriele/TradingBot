@@ -4,9 +4,7 @@
 FROM python:3.10-slim as builder
 WORKDIR /app
 
-# Only install build tools if needed
-# RUN apt-get update && apt-get install -y --no-install-recommends gcc g++ && rm -rf /var/lib/apt/lists/*
-
+# Copy only requirements and install
 COPY requirements-dashboard.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir -r requirements-dashboard.txt
@@ -15,7 +13,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 FROM python:3.10-slim
 WORKDIR /app
 
-# Runtime dependencies only
+# Runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends wget \
     && rm -rf /var/lib/apt/lists/*
 
@@ -23,14 +21,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends wget \
 COPY --from=builder /usr/local/lib/python3.10/site-packages /usr/local/lib/python3.10/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Non-root user
+# Add non-root user
 RUN useradd -m -u 1000 dashboard
-COPY --chown=dashboard:dashboard . .
+
+# Copy dashboard source code explicitly
+COPY --chown=dashboard:dashboard dashboard/ ./dashboard/
+
+# Set user
 USER dashboard
 
 EXPOSE 8501
 
+# Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8501/_stcore/health || exit 1
 
+# Start Streamlit
 CMD ["streamlit", "run", "dashboard/app.py", "--server.port=8501", "--server.address=0.0.0.0"]

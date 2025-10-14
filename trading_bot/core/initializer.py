@@ -6,6 +6,9 @@ from alpaca.data.requests import StockLatestQuoteRequest
 from trading_bot.core.risk_manager import RiskManager
 import json
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Account:
@@ -36,7 +39,7 @@ class Account:
         try:
             current_price = self.get_stock_price(symbol)
             if not current_price:
-                print(f"Could not get price for {symbol}")
+                logger.info(f"Could not get price for {symbol}")
                 return
 
             portfolio = self.get_portfolio()
@@ -52,24 +55,24 @@ class Account:
                         self.performance_tracker.record_entry(symbol, current_price, size, sentiment, stop_loss)
                     
                     self.risk_manager.execute_trade_with_risk_management(symbol, sentiment)
-                    print(f"BUY {symbol} at ${current_price:.2f} - Size: {size:.2f}")
+                    logger.info(f"BUY {symbol} at ${current_price:.2f} - Size: {size:.2f}")
 
                 elif "Negative" in sentiment and symbol in portfolio:
                     self.risk_manager.execute_trade_with_risk_management(symbol, sentiment)
                     
                     if self.performance_tracker:
                         self.performance_tracker.record_exit(symbol, current_price)
-                    
-                    print(f"SELL {symbol} at ${current_price:.2f}")
+
+                    logger.info(f"SELL {symbol} at ${current_price:.2f}")
             else:
                 # Simple trading without risk management
                 if "Positive" in sentiment and symbol not in portfolio:
-                    print(f"Would BUY {symbol} at ${current_price:.2f} (risk manager not configured)")
+                    logger.info(f"Would BUY {symbol} at ${current_price:.2f} (risk manager not configured)")
                 elif "Negative" in sentiment and symbol in portfolio:
-                    print(f"Would SELL {symbol} at ${current_price:.2f} (risk manager not configured)")
+                    logger.info(f"Would SELL {symbol} at ${current_price:.2f} (risk manager not configured)")
 
         except Exception as e:
-            print(f"Error trading {symbol}: {e}")
+            logger.info(f"Error trading {symbol}: {e}")
 
     def get_stock_price(self, symbol):
         try:
@@ -79,5 +82,5 @@ class Account:
                 return float(quotes[symbol].ask_price)
             return None
         except Exception as e:
-            print(f"Error getting price for {symbol}: {e}")
+            logger.info(f"Error getting price for {symbol}: {e}")
             return None
