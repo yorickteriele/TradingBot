@@ -22,10 +22,8 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 RUN useradd -m -u 1000 dashboard
 
 # Copy the single dashboard.py file
-COPY --chown=dashboard:dashboard trading_bot/core/dashboard.py ./dashboard.py
-COPY --chown=dashboard:dashboard trading_bot/core/initializer.py ./initializer.py
-COPY --chown=dashboard:dashboard trading_bot/core/performance_tracker.py ./performance_tracker.py
-COPY --chown=dashboard:dashboard trading_bot/core/risk_manager.py ./risk_manager.py
+# Copy the whole trading_bot folder
+COPY --chown=dashboard:dashboard trading_bot/ ./trading_bot/
 
 USER dashboard
 
@@ -34,4 +32,5 @@ EXPOSE 8501
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8501/_stcore/health || exit 1
 
-CMD ["streamlit", "run", "dashboard.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "trading_bot/core/dashboard.py", "--server.port=8501", "--server.address=0.0.0.0"]
+
