@@ -11,40 +11,31 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
-  build-and-push:
-    name: Build and Push Docker Images
+  build-bot:
+    name: Build and Push Bot Image
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-    
+
     steps:
-    - name: Free up disk space
-      run: |
-        sudo rm -rf /usr/share/dotnet
-        sudo rm -rf /opt/ghc
-        sudo rm -rf "/usr/local/share/boost"
-        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-        sudo docker system prune -af
-        df -h
-      
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Set image name to lowercase
       id: image-name
       run: echo "IMAGE_NAME=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
-      
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
-      
+
     - name: Log in to Container Registry
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
-    
+
     - name: Extract metadata for bot
       id: meta-bot
       uses: docker/metadata-action@v5
@@ -54,7 +45,7 @@ jobs:
           type=ref,event=branch
           type=sha,prefix={{branch}}-
           type=raw,value=latest,enable={{is_default_branch}}
-    
+
     - name: Build and push bot image
       uses: docker/build-push-action@v5
       with:
@@ -65,12 +56,33 @@ jobs:
         labels: ${{ steps.meta-bot.outputs.labels }}
         cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ steps.image-name.outputs.IMAGE_NAME }}-bot:buildcache
         cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ steps.image-name.outputs.IMAGE_NAME }}-bot:buildcache,mode=max
-        
-    - name: Clean up after bot build
-      run: |
-        docker system prune -af
-        df -h
-        
+
+  build-dashboard:
+    name: Build and Push Dashboard Image
+    runs-on: ubuntu-latest
+    needs: build-bot
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set image name to lowercase
+      id: image-name
+      run: echo "IMAGE_NAME=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
     - name: Extract metadata for dashboard
       id: meta-dashboard
       uses: docker/metadata-action@v5
@@ -90,42 +102,34 @@ jobs:
         no-cache: true
         tags: ${{ steps.meta-dashboard.outputs.tags }}
         labels: ${{ steps.meta-dashboard.outputs.labels }}
-        
-    - name: Clean up after dashboard build
-      run: |
-        docker system prune -af
-        df -h
-        
+
   deploy:
     name: Deploy to Production
     runs-on: ubuntu-latest
-    needs: [build-and-push]
+    needs: [build-bot, build-dashboard]
     environment: production
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Setup SSH
       run: |    
         mkdir -p ~/.ssh
         echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
         ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
-        
+
     - name: Deploy application
       run: |
-        # Copy necessary files
         scp -o StrictHostKeyChecking=no docker-compose.yml root@${{ secrets.SSH_HOST }}:/opt/tradingbot/
         scp -o StrictHostKeyChecking=no init-letsencrypt.sh root@${{ secrets.SSH_HOST }}:/opt/tradingbot/
         
-        # Deploy via SSH
         ssh -o StrictHostKeyChecking=no root@${{ secrets.SSH_HOST }} '
           set -e
           cd /opt/tradingbot
           
           # Set up environment variables
-          echo "Setting up environment variables..."
           cat > .env << EOF
         DB_HOST=db
         DB_USER=${{ secrets.DB_USER }}
@@ -138,35 +142,23 @@ jobs:
         DASHBOARD_IMAGE=${{ env.REGISTRY }}/$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')-dashboard:${{ github.ref_name }}
         EOF
           
-          # Log in to GitHub Container Registry
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
           
-          # Initialize or renew certificates if needed
           if [ ! -f "data/certbot/conf/live/trading.yorickteriele.nl/fullchain.pem" ]; then
             chmod +x init-letsencrypt.sh
             ./init-letsencrypt.sh
           fi
           
-          # Pull latest images
           docker-compose pull
-          
-          # Update services with zero downtime
           docker-compose up -d --no-build
-          
-          # Wait for services to be healthy
-          echo "Waiting for services to be healthy..."
           timeout 120 sh -c "until docker-compose ps | grep -q \"healthy\"; do sleep 5; done" || {
             echo "Services failed to become healthy"
             docker-compose logs
             exit 1
           }
-          
-          # Clean up old images
           docker image prune -f
-          
-          echo "Deployment completed successfully"
         '
+
     - name: Cleanup
       if: always()
-      run: |
-        rm -f ~/.ssh/id_rsa
+      run: rm -f ~/.ssh/id_rsa
