@@ -1,11 +1,8 @@
 import streamlit as st
-import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from initializer import Account
 from performance_tracker import PerformanceTracker
-import time
-from datetime import datetime, timedelta
 
 st.set_page_config(page_title="Trading Bot Dashboard", layout="wide")
 

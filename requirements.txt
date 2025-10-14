@@ -6,9 +6,7 @@ lxml
 lxml_html_clean
 numpy
 pandas
-plotly
 psycopg2-binary
-streamlit
 transformers
 python-dotenv
 torch

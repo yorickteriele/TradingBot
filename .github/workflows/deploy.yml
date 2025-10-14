@@ -80,17 +80,16 @@ jobs:
           type=ref,event=branch
           type=sha,prefix={{branch}}-
           type=raw,value=latest,enable={{is_default_branch}}
-    
+
     - name: Build and push dashboard image
       uses: docker/build-push-action@v5
       with:
         context: .
         file: ./Dockerfile.dashboard
         push: true
+        no-cache: true
         tags: ${{ steps.meta-dashboard.outputs.tags }}
         labels: ${{ steps.meta-dashboard.outputs.labels }}
-        cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ steps.image-name.outputs.IMAGE_NAME }}-dashboard:buildcache
-        cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ steps.image-name.outputs.IMAGE_NAME }}-dashboard:buildcache,mode=max
         
     - name: Clean up after dashboard build
       run: |
