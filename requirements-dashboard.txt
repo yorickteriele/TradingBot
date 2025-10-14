@@ -1,0 +1,13 @@
+aiohttp
+alpaca-py
+feedparser
+newspaper3k
+lxml[html_clean]
+numpy
+pandas
+plotly
+psycopg2-binary
+streamlit
+transformers
+python-dotenv
+
