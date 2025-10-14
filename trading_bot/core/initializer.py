@@ -1,10 +1,8 @@
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import MarketOrderRequest
-from alpaca.trading.enums import OrderSide, TimeInForce
+from alpaca.trading.enums import OrderSide
 from alpaca.data.requests import StockLatestQuoteRequest
 from trading_bot.core.risk_manager import RiskManager
-import json
 import os
 import logging
 

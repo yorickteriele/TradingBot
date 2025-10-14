@@ -1,9 +1,8 @@
 from dataclasses import dataclass
 from typing import Dict, Optional
 import numpy as np
-import pandas as pd
 from datetime import datetime, timedelta
-from alpaca.trading.requests import MarketOrderRequest, StopLossRequest
+from alpaca.trading.requests import MarketOrderRequest
 from alpaca.trading.enums import OrderSide, TimeInForce
 from alpaca.trading.client import TradingClient
 from alpaca.data.historical import StockHistoricalDataClient

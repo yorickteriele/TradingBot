@@ -23,6 +23,9 @@ RUN useradd -m -u 1000 dashboard
 
 # Copy the single dashboard.py file
 COPY --chown=dashboard:dashboard trading_bot/core/dashboard.py ./dashboard.py
+COPY --chown=dashboard:dashboard trading_bot/core/initializer.py ./initializer.py
+COPY --chown=dashboard:dashboard trading_bot/core/performance_tracker.py ./performance_tracker.py
+COPY --chown=dashboard:dashboard trading_bot/core/risk_manager.py ./risk_manager.py
 
 USER dashboard
 
