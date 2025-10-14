@@ -11,12 +11,6 @@ CREATE TABLE IF NOT EXISTS nasdaq_stock(
     rss_url VARCHAR(255) NOT NULL
 );
 
-
--- Create index on symbol for faster lookups
-CREATE INDEX IF NOT EXISTS idx_stocks_symbol ON nasdaq_stock(symbol);
-CREATE INDEX IF NOT EXISTS idx_stocks_active ON nasdaq_stock(active);
-
-
 -- Create trades table
 CREATE TABLE IF NOT EXISTS trades(
     trade_id SERIAL PRIMARY KEY,
@@ -35,5 +29,3 @@ CREATE TABLE IF NOT EXISTS stock_news_tracking(
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create index for faster lookups
-CREATE INDEX IF NOT EXISTS idx_stock_news_tracking_symbol ON stock_news_tracking(stock_symbol);

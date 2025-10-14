@@ -3,15 +3,12 @@ import json
 import os
 import sys
 from datetime import datetime
-
+from dotenv import load_dotenv
 import psycopg2
 import time
 import logging
 from pathlib import Path
 from typing import List, Dict, Optional
-from contextlib import contextmanager
-
-from psycopg2.extras import DictCursor
 
 # Add project root to Python path
 project_root = Path(__file__).parent.parent.parent.parent
@@ -39,10 +36,20 @@ class Database:
     def __new__(cls, config: Optional[Dict] = None):
         if cls._instance is None:
             cls._instance = super(Database, cls).__new__(cls)
-            cls._instance.config = config
+            cls._instance.config = config or cls.load_config()
             cls._instance.conn = None
             cls._instance.ensure_connection()
         return cls._instance
+
+    @staticmethod
+    def load_config() -> Dict[str, str]:
+        load_dotenv()
+        return {
+            "DB_HOST": os.environ.get("DB_HOST", "localhost"),
+            "DB_USER": os.environ.get("DB_USER", "postgres"),
+            "DB_PASSWORD": os.environ.get("DB_PASSWORD", "postgres"),
+            "DB_NAME": os.environ.get("DB_NAME", "tradingbot")
+        }
 
     def __enter__(self):
         self.ensure_connection()
