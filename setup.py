@@ -7,7 +7,7 @@ setup(
     install_requires=[
         line.strip()
         for line in open("requirements.txt")
-        if line.strip() and not line.startswith("#")
+        if line.strip() and not line.startswith("#") and not line.startswith("-")
     ],
     python_requires=">=3.9",
     author="yorickteriele",

@@ -5,6 +5,10 @@ from alpaca.data.requests import StockLatestQuoteRequest
 from trading_bot.core.risk_manager import RiskManager
 import os
 import logging
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
