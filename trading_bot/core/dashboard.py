@@ -68,16 +68,15 @@ def get_positions_data(account):
         return pd.DataFrame()
 
 
-def get_portfolio_history(account):
+def get_portfolio_history(account, period='1M'):
     """Get portfolio history from Alpaca"""
     try:
         trading_client = account.get_trading_client()
-        # Get portfolio history for the last 30 days
         from alpaca.trading.requests import GetPortfolioHistoryRequest
         from alpaca.trading.enums import TimeFrame
         
         request = GetPortfolioHistoryRequest(
-            period='1M',
+            period=period,
             timeframe=TimeFrame.Day
         )
         history = trading_client.get_portfolio_history(request)
@@ -93,6 +92,75 @@ def get_portfolio_history(account):
         return pd.DataFrame()
     except Exception as e:
         logger.error(f"Error getting portfolio history: {e}")
+        return pd.DataFrame()
+
+
+def get_recent_orders(account, limit=50):
+    """Get recent orders from Alpaca"""
+    try:
+        trading_client = account.get_trading_client()
+        from alpaca.trading.requests import GetOrdersRequest
+        from alpaca.trading.enums import QueryOrderStatus
+        
+        request = GetOrdersRequest(
+            status=QueryOrderStatus.ALL,
+            limit=limit
+        )
+        orders = trading_client.get_orders(request)
+        
+        orders_data = []
+        for order in orders:
+            orders_data.append({
+                'Symbol': order.symbol,
+                'Side': order.side.value,
+                'Type': order.type.value,
+                'Qty': float(order.qty) if order.qty else 0,
+                'Filled Qty': float(order.filled_qty) if order.filled_qty else 0,
+                'Status': order.status.value,
+                'Submitted': pd.to_datetime(order.submitted_at).strftime('%Y-%m-%d %H:%M:%S'),
+                'Filled Price': f"${float(order.filled_avg_price):.2f}" if order.filled_avg_price else 'N/A',
+            })
+        
+        return pd.DataFrame(orders_data)
+    except Exception as e:
+        logger.error(f"Error getting orders: {e}")
+        return pd.DataFrame()
+
+
+def get_account_activities(account, activity_type=None, limit=100):
+    """Get account activities from Alpaca"""
+    try:
+        trading_client = account.get_trading_client()
+        from alpaca.trading.requests import GetAccountActivitiesRequest
+        
+        request = GetAccountActivitiesRequest(
+            activity_types=activity_type,
+        )
+        activities = trading_client.get_account_activities(request)
+        
+        activities_data = []
+        for activity in activities[:limit]:
+            activity_dict = {
+                'Date': pd.to_datetime(activity.activity_type if hasattr(activity, 'transaction_time') else activity.date).strftime('%Y-%m-%d %H:%M:%S') if hasattr(activity, 'date') or hasattr(activity, 'transaction_time') else 'N/A',
+                'Type': activity.activity_type if hasattr(activity, 'activity_type') else 'N/A',
+            }
+            
+            if hasattr(activity, 'symbol'):
+                activity_dict['Symbol'] = activity.symbol
+            if hasattr(activity, 'qty'):
+                activity_dict['Qty'] = float(activity.qty)
+            if hasattr(activity, 'price'):
+                activity_dict['Price'] = f"${float(activity.price):.2f}"
+            if hasattr(activity, 'side'):
+                activity_dict['Side'] = activity.side
+            if hasattr(activity, 'net_amount'):
+                activity_dict['Amount'] = f"${float(activity.net_amount):.2f}"
+                
+            activities_data.append(activity_dict)
+        
+        return pd.DataFrame(activities_data)
+    except Exception as e:
+        logger.error(f"Error getting activities: {e}")
         return pd.DataFrame()
 
 
@@ -170,12 +238,15 @@ def create_portfolio_chart(portfolio_history):
 
 def main():
     st.title("Trading Bot Dashboard")
+    st.caption("Starting Capital: $100.00")
     
-    # Add refresh button
-    col_refresh, col_auto = st.columns([1, 5])
+    # Add refresh button and time period selector
+    col_refresh, col_period, col_auto = st.columns([1, 2, 3])
     with col_refresh:
         if st.button("Refresh"):
             st.rerun()
+    with col_period:
+        period = st.selectbox("Time Period", ["1W", "1M", "3M", "1A", "All"], index=1)
     with col_auto:
         auto_refresh = st.checkbox("Auto-refresh (30s)", value=False)
     
@@ -242,7 +313,7 @@ def main():
 
     # Portfolio History Chart
     st.header("Portfolio Performance")
-    portfolio_history = get_portfolio_history(account)
+    portfolio_history = get_portfolio_history(account, period=period)
     
     if not portfolio_history.empty:
         fig_portfolio = create_portfolio_chart(portfolio_history)
@@ -252,7 +323,19 @@ def main():
         total_return = portfolio_history['equity'].iloc[-1] - portfolio_history['equity'].iloc[0]
         total_return_pct = (total_return / portfolio_history['equity'].iloc[0]) * 100
         
-        stat_col1, stat_col2, stat_col3, stat_col4 = st.columns(4)
+        # Calculate volatility and Sharpe ratio
+        daily_returns = portfolio_history['profit_loss_pct']
+        volatility = daily_returns.std() * (252 ** 0.5)  # Annualized volatility
+        avg_return = daily_returns.mean() * 252  # Annualized return
+        sharpe_ratio = (avg_return - 0.02) / volatility if volatility > 0 else 0  # Assuming 2% risk-free rate
+        
+        # Calculate max drawdown
+        cumulative = (1 + daily_returns / 100).cumprod()
+        running_max = cumulative.expanding().max()
+        drawdown = (cumulative - running_max) / running_max
+        max_drawdown = drawdown.min() * 100
+        
+        stat_col1, stat_col2, stat_col3, stat_col4, stat_col5 = st.columns(5)
         with stat_col1:
             st.metric("Period Return", f"${total_return:,.2f}", f"{total_return_pct:+.2f}%")
         with stat_col2:
@@ -260,13 +343,30 @@ def main():
         with stat_col3:
             st.metric("Worst Day", f"${portfolio_history['profit_loss'].min():,.2f}")
         with stat_col4:
+            st.metric("Volatility (Ann.)", f"{volatility:.2f}%")
+        with stat_col5:
+            st.metric("Sharpe Ratio", f"{sharpe_ratio:.2f}")
+        
+        # Additional statistics row
+        stat2_col1, stat2_col2, stat2_col3, stat2_col4 = st.columns(4)
+        with stat2_col1:
             avg_daily = portfolio_history['profit_loss'].mean()
             st.metric("Avg Daily P&L", f"${avg_daily:,.2f}")
+        with stat2_col2:
+            winning_days = (portfolio_history['profit_loss'] > 0).sum()
+            total_days = len(portfolio_history)
+            win_rate = (winning_days / total_days * 100) if total_days > 0 else 0
+            st.metric("Winning Days", f"{winning_days}/{total_days} ({win_rate:.1f}%)")
+        with stat2_col3:
+            st.metric("Max Drawdown", f"{max_drawdown:.2f}%")
+        with stat2_col4:
+            total_pnl = portfolio_history['profit_loss'].sum()
+            st.metric("Total P&L", f"${total_pnl:,.2f}")
     else:
         st.info("No portfolio history available yet.")
 
     # Current Positions Section
-    st.header("💼 Current Positions")
+    st.header("Current Positions")
     
     if not positions_data.empty:
         # Style the dataframe
@@ -314,72 +414,161 @@ def main():
     else:
         st.info("No open positions currently.")
 
-    # Bot Performance Metrics (from tracker)
-    st.header("Bot Trading Performance")
-    metrics = tracker.get_performance_metrics()
+    # Recent Orders Section
+    st.header("Recent Orders")
+    recent_orders = get_recent_orders(account, limit=20)
     
-    metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+    if not recent_orders.empty:
+        # Add filters
+        col_filter1, col_filter2, col_filter3 = st.columns(3)
+        with col_filter1:
+            status_filter = st.multiselect("Filter by Status", 
+                                          options=recent_orders['Status'].unique().tolist(),
+                                          default=recent_orders['Status'].unique().tolist())
+        with col_filter2:
+            side_filter = st.multiselect("Filter by Side",
+                                        options=recent_orders['Side'].unique().tolist(),
+                                        default=recent_orders['Side'].unique().tolist())
+        with col_filter3:
+            type_filter = st.multiselect("Filter by Type",
+                                        options=recent_orders['Type'].unique().tolist(),
+                                        default=recent_orders['Type'].unique().tolist())
+        
+        filtered_orders = recent_orders[
+            (recent_orders['Status'].isin(status_filter)) &
+            (recent_orders['Side'].isin(side_filter)) &
+            (recent_orders['Type'].isin(type_filter))
+        ]
+        
+        st.dataframe(filtered_orders, use_container_width=True, hide_index=True)
+        
+        # Order statistics
+        if not filtered_orders.empty:
+            order_stat_col1, order_stat_col2, order_stat_col3, order_stat_col4 = st.columns(4)
+            with order_stat_col1:
+                total_orders = len(filtered_orders)
+                st.metric("Total Orders", total_orders)
+            with order_stat_col2:
+                filled_orders = len(filtered_orders[filtered_orders['Status'] == 'filled'])
+                st.metric("Filled Orders", filled_orders)
+            with order_stat_col3:
+                pending_orders = len(filtered_orders[filtered_orders['Status'].isin(['pending_new', 'accepted', 'new'])])
+                st.metric("Pending Orders", pending_orders)
+            with order_stat_col4:
+                cancelled_orders = len(filtered_orders[filtered_orders['Status'] == 'canceled'])
+                st.metric("Cancelled Orders", cancelled_orders)
+    else:
+        st.info("No orders found.")
 
-    with metric_col1:
-        st.metric("Total Trades", metrics['total_trades'])
-    with metric_col2:
-        st.metric("Win Rate", f"{metrics['win_rate'] * 100:.1f}%")
-    with metric_col3:
-        st.metric("Total P&L", f"${metrics['total_pnl']:,.2f}")
-    with metric_col4:
-        st.metric("Max Drawdown", f"{metrics['max_drawdown'] * 100:.1f}%")
-
-    # Trade History Chart
-    trade_history = tracker.get_trade_history()
+    # Account Activities Section
+    st.header("Account Activities")
+    activities = get_account_activities(account, limit=50)
     
-    if not trade_history.empty:
-        closed_trades = trade_history[trade_history['exit_time'].notna()]
-        if not closed_trades.empty:
-            st.subheader("Trade History Performance")
-            fig = create_performance_chart(closed_trades)
-            st.plotly_chart(fig, use_container_width=True)
-
-    # Trade History Tables
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.subheader("Recent Trades")
-        if not trade_history.empty:
-            closed_trades = trade_history[trade_history['exit_time'].notna()].tail(10)
-            if not closed_trades.empty:
-                display_trades = closed_trades[['symbol', 'entry_time', 'exit_time', 'entry_price', 'exit_price', 'pnl', 'sentiment']].copy()
-                display_trades['entry_time'] = pd.to_datetime(display_trades['entry_time']).dt.strftime('%Y-%m-%d %H:%M')
-                display_trades['exit_time'] = pd.to_datetime(display_trades['exit_time']).dt.strftime('%Y-%m-%d %H:%M')
-                
-                def color_pnl(val):
-                    if isinstance(val, (int, float)):
-                        color = 'green' if val > 0 else 'red' if val < 0 else 'gray'
-                        return f'color: {color}'
-                    return ''
-                
-                styled_trades = display_trades.style.applymap(color_pnl, subset=['pnl']).format({'pnl': '${:.2f}', 'entry_price': '${:.2f}', 'exit_price': '${:.2f}'})
-                st.dataframe(styled_trades, use_container_width=True, hide_index=True)
-            else:
-                st.info("No closed trades yet.")
+    if not activities.empty:
+        # Activity type filter
+        if 'Type' in activities.columns:
+            activity_types = activities['Type'].unique().tolist()
+            selected_types = st.multiselect("Filter by Activity Type", 
+                                           options=activity_types,
+                                           default=activity_types)
+            filtered_activities = activities[activities['Type'].isin(selected_types)]
         else:
-            st.info("No trades recorded yet.")
+            filtered_activities = activities
+        
+        st.dataframe(filtered_activities, use_container_width=True, hide_index=True)
+        
+        # Activity summary
+        if 'Type' in filtered_activities.columns:
+            st.subheader("Activity Summary")
+            activity_counts = filtered_activities['Type'].value_counts()
+            
+            fig_activity = go.Figure(data=[go.Bar(
+                x=activity_counts.index,
+                y=activity_counts.values,
+                marker_color='#00D9FF'
+            )])
+            fig_activity.update_layout(
+                title='Activity Types Distribution',
+                xaxis_title='Activity Type',
+                yaxis_title='Count',
+                height=400
+            )
+            st.plotly_chart(fig_activity, use_container_width=True)
+    else:
+        st.info("No activities found.")
 
-    with col2:
-        st.subheader("Active Bot Positions")
-        current_positions = tracker.get_current_positions()
-        if not current_positions.empty:
-            display_positions = current_positions[['symbol', 'entry_time', 'entry_price', 'position_size', 'stop_loss']].copy()
-            display_positions['entry_time'] = pd.to_datetime(display_positions['entry_time']).dt.strftime('%Y-%m-%d %H:%M')
-            display_positions = display_positions.rename(columns={
-                'symbol': 'Symbol',
-                'entry_time': 'Entry Time',
-                'entry_price': 'Entry Price',
-                'position_size': 'Size',
-                'stop_loss': 'Stop Loss'
-            })
-            st.dataframe(display_positions, use_container_width=True, hide_index=True)
+    # Risk Metrics Section
+    st.header("Risk Analysis")
+    
+    risk_col1, risk_col2 = st.columns(2)
+    
+    with risk_col1:
+        st.subheader("Position Concentration")
+        if not positions_data.empty:
+            # Calculate concentration metrics
+            positions_data['Market Value Clean'] = positions_data['Market Value'].str.replace('$', '').str.replace(',', '').astype(float)
+            total_portfolio = positions_data['Market Value Clean'].sum()
+            
+            concentration_data = []
+            for _, pos in positions_data.iterrows():
+                weight = (pos['Market Value Clean'] / total_portfolio * 100) if total_portfolio > 0 else 0
+                concentration_data.append({
+                    'Symbol': pos['Symbol'],
+                    'Weight %': f"{weight:.2f}%",
+                    'Market Value': pos['Market Value']
+                })
+            
+            concentration_df = pd.DataFrame(concentration_data)
+            st.dataframe(concentration_df, use_container_width=True, hide_index=True)
+            
+            # Highlight if concentration is too high
+            max_weight = positions_data['Market Value Clean'].max() / total_portfolio * 100 if total_portfolio > 0 else 0
+            if max_weight > 20:
+                st.warning(f"Highest position concentration: {max_weight:.1f}% - Consider diversification")
         else:
-            st.info("No active positions tracked by bot.")
+            st.info("No positions to analyze")
+    
+    with risk_col2:
+        st.subheader("Margin Utilization")
+        if account_info['buying_power'] > 0:
+            # Calculate margin usage
+            used_buying_power = account_info['long_market_value']
+            available_buying_power = account_info['buying_power']
+            total_buying_power = used_buying_power + available_buying_power
+            margin_usage = (used_buying_power / total_buying_power * 100) if total_buying_power > 0 else 0
+            
+            # Create gauge chart
+            fig_margin = go.Figure(go.Indicator(
+                mode="gauge+number+delta",
+                value=margin_usage,
+                domain={'x': [0, 1], 'y': [0, 1]},
+                title={'text': "Margin Usage %"},
+                delta={'reference': 50},
+                gauge={
+                    'axis': {'range': [None, 100]},
+                    'bar': {'color': "darkblue"},
+                    'steps': [
+                        {'range': [0, 50], 'color': "lightgreen"},
+                        {'range': [50, 75], 'color': "yellow"},
+                        {'range': [75, 100], 'color': "red"}
+                    ],
+                    'threshold': {
+                        'line': {'color': "red", 'width': 4},
+                        'thickness': 0.75,
+                        'value': 90
+                    }
+                }
+            ))
+            fig_margin.update_layout(height=300)
+            st.plotly_chart(fig_margin, use_container_width=True)
+            
+            margin_metrics = st.columns(3)
+            with margin_metrics[0]:
+                st.metric("Used", f"${used_buying_power:,.2f}")
+            with margin_metrics[1]:
+                st.metric("Available", f"${available_buying_power:,.2f}")
+            with margin_metrics[2]:
+                st.metric("Total", f"${total_buying_power:,.2f}")
 
 
 if __name__ == "__main__":
