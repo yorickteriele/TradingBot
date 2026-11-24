@@ -1,0 +1,23 @@
+name: Build
+# Runs on the PR-server (a self-hosted runner). The repository is public, so only pushes run here, never pull requests
+# from forks. It checks that both images build; Dokploy builds and deploys master itself from GitHub (deploy/*.compose.yml).
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build the bot and dashboard images
+    runs-on: [self-hosted, pr-server]
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m py_compile main.py $(git ls-files 'trading_bot/*.py')
+      - run: docker build -f Dockerfile.bot -t "tradingbot-bot:ci-${GITHUB_SHA}" .
+      - run: docker build -f Dockerfile.dashboard -t "tradingbot-dashboard:ci-${GITHUB_SHA}" .
+      - name: Remove the images
+        if: always()
+        run: docker image rm -f "tradingbot-bot:ci-${GITHUB_SHA}" "tradingbot-dashboard:ci-${GITHUB_SHA}" >/dev/null 2>&1 || true

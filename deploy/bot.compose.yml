@@ -1,0 +1,34 @@
+# Trading bot for Dokploy: the GitHub Compose service "tradingbot-bot", which Dokploy builds from this repository on every
+# push to master. The database is Dokploy's Postgres service "tradingbot-db"; the dashboard is deploy/dashboard.compose.yml.
+#
+# Environment (set in Dokploy): DB_HOST (the Postgres service's app name), DB_USER, DB_PASSWORD, DB_NAME, ALPACA_API_KEY,
+# ALPACA_SECRET_KEY, and BOT_SCALE: 1 runs the bot, 0 builds it without starting it. Never run two bots at once: they
+# would both place orders.
+services:
+  tradingbot-bot:
+    build:
+      context: ..
+      dockerfile: Dockerfile.bot
+    image: tradingbot-bot:latest
+    scale: ${BOT_SCALE:-1}
+    restart: unless-stopped
+    environment:
+      DB_HOST: ${DB_HOST:?Set DB_HOST}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      DB_NAME: ${DB_NAME:-TradingBot}
+      DB_PORT: "5432"
+      ALPACA_API_KEY: ${ALPACA_API_KEY:?Set ALPACA_API_KEY}
+      ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY:?Set ALPACA_SECRET_KEY}
+    mem_limit: 512m
+    networks: [dokploy-network]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  dokploy-network:
+    external: true

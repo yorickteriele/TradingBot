@@ -1,0 +1,38 @@
+# Trading dashboard (Streamlit) for Dokploy: the GitHub Compose service "tradingbot-dashboard", which Dokploy builds from
+# this repository on every push to master. Traefik sends trading.yorickteriele.nl here.
+#
+# Environment (set in Dokploy): DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, ALPACA_API_KEY, ALPACA_SECRET_KEY, and
+# TRAEFIK_ENABLE (true; false keeps it out of Traefik, e.g. before a cutover).
+services:
+  tradingbot-dashboard:
+    build:
+      context: ..
+      dockerfile: Dockerfile.dashboard
+    image: tradingbot-dashboard:latest
+    restart: unless-stopped
+    environment:
+      DB_HOST: ${DB_HOST:?Set DB_HOST}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      DB_NAME: ${DB_NAME:-TradingBot}
+      DB_PORT: "5432"
+      ALPACA_API_KEY: ${ALPACA_API_KEY:?Set ALPACA_API_KEY}
+      ALPACA_SECRET_KEY: ${ALPACA_SECRET_KEY:?Set ALPACA_SECRET_KEY}
+    mem_limit: 512m
+    networks: [dokploy-network]
+    labels:
+      - "traefik.enable=${TRAEFIK_ENABLE:-true}"
+      - "traefik.http.routers.tradingbot-dashboard.rule=Host(`trading.yorickteriele.nl`)"
+      - "traefik.http.routers.tradingbot-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.tradingbot-dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.services.tradingbot-dashboard.loadbalancer.server.port=8501"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  dokploy-network:
+    external: true
